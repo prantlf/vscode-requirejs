@@ -60,57 +60,6 @@ function setCachedVersionedObject (cache, document, object) {
 	});
 }
 
-// Converts an esprima's range array [start,end] to a {start,end} objects
-// containing {line,character} objects.
-function convertRangeToPositions (fileContents, range) {
-	function getLineNumber (string, start, end) {
-		let count = 0;
-		let	i;
-
-		for (i = start; i < end; ++i) {
-			if (string.charAt(i) === '\n') {
-				++count;
-			}
-		}
-
-		return count;
-	}
-
-	function getCharacterNumber (string, start, end) {
-		let count = 0;
-		let	i;
-
-		for (i = end; --i >= start;) {
-			if (string.charAt(i) === '\n') {
-				break;
-			}
-			++count;
-		}
-
-		return count;
-	}
-
-	const start = range[0];
-	const end = range[1];
-	const startLine = getLineNumber(fileContents, 0, start);
-	const startCharacter = getCharacterNumber(fileContents, 0, start);
-	const linesInside = getLineNumber(fileContents, start, end);
-	const endLine = startLine + linesInside;
-	const endCharacter = linesInside ? getCharacterNumber(fileContents, start, end) : startCharacter + end - start;
-
-	return {
-		start: {
-			line: startLine,
-			character: startCharacter
-		},
-		end: {
-			line: endLine,
-			character: endCharacter
-		}
-	};
-}
-
-
 class ReferenceProvider {
 	constructor () {
 		this.moduleDependencyCache = new LRU(100);
@@ -131,11 +80,10 @@ class ReferenceProvider {
 		if (!dependencies) {
 			let astRoot = getCachedVersionedObject(this.parsedModuleCache, document);
 
-			dependencies = amodroParse.findDependencies(fileName, astRoot || textContent, { range: true });
+			dependencies = amodroParse.findDependencies2(fileName, astRoot || textContent, { loc: true });
 			if (!astRoot) {
 				setCachedVersionedObject(this.parsedModuleCache, document, dependencies.astRoot);
 			}
-
 			dependencies = {
 				modules: dependencies.modules,
 				params: dependencies.params
@@ -163,14 +111,14 @@ class ReferenceProvider {
 	findIdentifierLocation (document, textContent, identifier) {
 		const fileName = document.fileName;
 		let astRoot = getCachedVersionedObject(this.parsedModuleCache, document);
-		const location = amodroParse.findIdentifier(fileName, astRoot || textContent, identifier);
-		const range = location.range;
+		const location = amodroParse.findIdentifier(fileName, astRoot || textContent, identifier, { loc: true });
+		const loc = location.loc;
 
 		if (!astRoot) {
 			setCachedVersionedObject(this.parsedModuleCache, document, location.astRoot);
 		}
 
-		return range && convertRangeToPositions(textContent, range);
+		return loc;
 	}
 
 	/**
@@ -232,8 +180,8 @@ class ReferenceProvider {
 
 				if (foundAt) {
 					return new vscode.Location(newUri, new vscode.Range(
-						new vscode.Position(foundAt.start.line, foundAt.start.character),
-						new vscode.Position(foundAt.end.line, foundAt.end.character)
+						new vscode.Position(foundAt.start.line - 1, foundAt.start.column),
+						new vscode.Position(foundAt.end.line - 1, foundAt.end.column)
 					));
 				}
 			}

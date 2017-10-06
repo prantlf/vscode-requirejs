@@ -37,7 +37,7 @@ function initializeRequireJs () {
 class ReferenceProvider {
 	constructor () {
 		this.moduleDependencyCache = new LRU(100);
-		this.fileContentCache = new LRU(100);
+		this.parsedModuleCache = new LRU(100);
 	}
 
 	/**
@@ -48,23 +48,44 @@ class ReferenceProvider {
 		 */
 	getModuleDependencies (document, textContent) {
 		const fileName = document.fileName;
-		let cacheEntry = this.moduleDependencyCache.get(fileName);
+		let dependencyCacheEntry = this.moduleDependencyCache.get(fileName);
 		let dependencies;
 
-		if (cacheEntry) {
-			if (cacheEntry.version !== document.version) {
+		if (dependencyCacheEntry) {
+			if (dependencyCacheEntry.version !== document.version) {
 				this.moduleDependencyCache.del(fileName);
-				cacheEntry = null;
+				dependencyCacheEntry = null;
+			} else {
+				dependencies = dependencyCacheEntry.dependencies;
 			}
 		}
-		if (!cacheEntry) {
-			cacheEntry = {
-				dependencies: amodroParse.findDependencies(fileName, textContent, {}),
+		if (!dependencyCacheEntry) {
+			let parsedCacheEntry = this.parsedModuleCache.get(fileName);
+
+			if (parsedCacheEntry) {
+				if (parsedCacheEntry.version !== document.version) {
+					this.parsedModuleCache.del(fileName);
+					parsedCacheEntry = null;
+				}
+			}
+
+			dependencies = amodroParse.findDependencies(fileName,
+				parsedCacheEntry && parsedCacheEntry.astRoot || textContent, { range: true });
+
+			if (!parsedCacheEntry) {
+				parsedCacheEntry = {
+					astRoot: dependencies.astRoot,
+					version: document.version
+				};
+				this.parsedModuleCache.set(fileName, parsedCacheEntry);
+			}
+
+			dependencyCacheEntry = {
+				dependencies: dependencies,
 				version: document.version
 			};
-			this.moduleDependencyCache.set(fileName, cacheEntry);
+			this.moduleDependencyCache.set(fileName, dependencyCacheEntry);
 		}
-		dependencies = cacheEntry.dependencies;
 
 		return dependencies.params.reduce(function (result, param, index) {
 			result[param] = dependencies[index];
@@ -82,27 +103,27 @@ class ReferenceProvider {
 		 */
 	findIdentifierLocation (document, textContent, identifier) {
 		const fileName = document.fileName;
-		let cacheEntry = this.fileContentCache.get(fileName);
+		let cacheEntry = this.parsedModuleCache.get(fileName);
 
 		if (cacheEntry) {
 			if (cacheEntry.version !== document.version) {
-				this.fileContentCache.del(fileName);
+				this.parsedModuleCache.del(fileName);
 				cacheEntry = null;
 			}
 		}
 
-		const result = amodroParse.findIdentifier(cacheEntry && cacheEntry.astRoot || textContent, identifier);
-		const location = result.location;
+		const location = amodroParse.findIdentifier(fileName,
+			cacheEntry && cacheEntry.astRoot || textContent, identifier);
 
 		if (!cacheEntry) {
 			cacheEntry = {
-				astRoot: result.astRoot,
+				astRoot: location.astRoot,
 				version: document.version
 			};
-			this.fileContentCache.set(fileName, cacheEntry);
+			this.parsedModuleCache.set(fileName, cacheEntry);
 		}
 
-		return location && amodroParse.convertRangeToPositions(textContent, location);
+		return location.length && amodroParse.convertRangeToPositions(textContent, location);
 	}
 
 	/**

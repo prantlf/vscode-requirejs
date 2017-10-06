@@ -58,7 +58,7 @@ class ReferenceProvider {
 		}
 		if (!cacheEntry) {
 			cacheEntry = {
-				dependencies: amodroParse.findDependencies('module.js', textContent, {}),
+				dependencies: amodroParse.findDependencies(fileName, textContent, {}),
 				version: document.version
 			};
 			this.dependencyCache.set(fileName, cacheEntry);
@@ -127,17 +127,15 @@ class ReferenceProvider {
 
 			if (!onlyNavigateToFile && searchFor) {
 				const fullText = doc.getText();
-				const test = new RegExp('(\\b' + searchFor + '\\b)', 'g');
-				const simpleComment = /^\s*\*/gm;
-				let searchResult;
+				let foundAt = amodroParse.findIdentifier(fullText, searchFor);
 
-				while ((searchResult = test.exec(fullText))) {
-					const newPosition = doc.positionAt(searchResult.index);
+				if (foundAt) {
+					foundAt = amodroParse.convertRangeToPositions(fullText, foundAt);
 
-					// If not inside a comment, continue at this reference
-					if (!simpleComment.test(doc.lineAt(newPosition._line).text)) {
-						return new vscode.Location(newUri, newPosition);
-					}
+					return new vscode.Location(newUri, new vscode.Range(
+						new vscode.Position(foundAt.start.line, foundAt.start.character),
+						new vscode.Position(foundAt.end.line, foundAt.end.character)
+					));
 				}
 			}
 

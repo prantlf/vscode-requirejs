@@ -17,14 +17,14 @@ const referenceProvider = new ReferenceProvider();
 
 suite('searchModule', () => {
 	test('should resolve with path for moduleA.js', () => {
-		return referenceProvider.searchModule('../testFiles/test1.js', 'moduleA', '', true)
+		return referenceProvider.searchModule('../testFiles/test1.js', './moduleA', '')
 			.then(result => {
 				assert.equal(normalize(result.uri._fsPath), normalize(`/${rootPath}testFiles/moduleA.js`));
 			});
 	});
 
 	test('should find method foo in moduleA.js', () => {
-		return referenceProvider.searchModule('../testFiles/test3.js', 'moduleA', 'foo', true)
+		return referenceProvider.searchModule('../testFiles/test3.js', './moduleA', 'foo')
 			.then(result => {
 				assert.equal(normalize(result.uri.path), normalize(`/${rootPath}testFiles/moduleA.js`));
 				assert.equal(result.range._start._line, 2);

@@ -34,6 +34,32 @@ function initializeRequireJs () {
 	}
 }
 
+// Gets a cached object for the specified document version. If the cache was
+// popupated for other document version, it rtemoves the object from the cache
+// and returns nothing.
+function getCachedVersionedObject (cache, document) {
+	const fileName = document.fileName;
+	let cacheEntry = cache.get(fileName);
+
+	if (cacheEntry) {
+		if (cacheEntry.version !== document.version) {
+			cache.del(fileName);
+		} else {
+			return cacheEntry.object;
+		}
+	}
+
+	return null;
+}
+
+// Sets a object to cache for the specified document version.
+function setCachedVersionedObject (cache, document, object) {
+	cache.set(document.fileName, {
+		object: object,
+		version: document.version
+	});
+}
+
 class ReferenceProvider {
 	constructor () {
 		this.moduleDependencyCache = new LRU(100);
@@ -48,46 +74,28 @@ class ReferenceProvider {
 		 */
 	getModuleDependencies (document, textContent) {
 		const fileName = document.fileName;
-		let dependencyCacheEntry = this.moduleDependencyCache.get(fileName);
-		let dependencies;
+		let dependencies = getCachedVersionedObject(this.moduleDependencyCache, document);
+		let params;
 
-		if (dependencyCacheEntry) {
-			if (dependencyCacheEntry.version !== document.version) {
-				this.moduleDependencyCache.del(fileName);
-				dependencyCacheEntry = null;
-			} else {
-				dependencies = dependencyCacheEntry.dependencies;
-			}
-		}
-		if (!dependencyCacheEntry) {
-			let parsedCacheEntry = this.parsedModuleCache.get(fileName);
+		if (!dependencies) {
+			let astRoot = getCachedVersionedObject(this.parsedModuleCache, document);
 
-			if (parsedCacheEntry) {
-				if (parsedCacheEntry.version !== document.version) {
-					this.parsedModuleCache.del(fileName);
-					parsedCacheEntry = null;
-				}
+			dependencies = amodroParse.findDependencies(fileName, astRoot || textContent, { range: true });
+			if (!astRoot) {
+				setCachedVersionedObject(this.parsedModuleCache, document, dependencies.astRoot);
 			}
 
-			dependencies = amodroParse.findDependencies(fileName,
-				parsedCacheEntry && parsedCacheEntry.astRoot || textContent, { range: true });
-
-			if (!parsedCacheEntry) {
-				parsedCacheEntry = {
-					astRoot: dependencies.astRoot,
-					version: document.version
-				};
-				this.parsedModuleCache.set(fileName, parsedCacheEntry);
-			}
-
-			dependencyCacheEntry = {
-				dependencies: dependencies,
-				version: document.version
+			dependencies = {
+				modules: dependencies.modules,
+				params: dependencies.params
 			};
-			this.moduleDependencyCache.set(fileName, dependencyCacheEntry);
+			setCachedVersionedObject(this.moduleDependencyCache, document, dependencies);
 		}
 
-		return dependencies.params.reduce(function (result, param, index) {
+		params = dependencies.params;
+		dependencies = dependencies.modules;
+
+		return params.reduce(function (result, param, index) {
 			result[param] = dependencies[index];
 
 			return result;
@@ -103,27 +111,15 @@ class ReferenceProvider {
 		 */
 	findIdentifierLocation (document, textContent, identifier) {
 		const fileName = document.fileName;
-		let cacheEntry = this.parsedModuleCache.get(fileName);
+		let astRoot = getCachedVersionedObject(this.parsedModuleCache, document);
+		const location = amodroParse.findIdentifier(fileName, astRoot || textContent, identifier);
+		const range = location.range;
 
-		if (cacheEntry) {
-			if (cacheEntry.version !== document.version) {
-				this.parsedModuleCache.del(fileName);
-				cacheEntry = null;
-			}
+		if (!astRoot) {
+			setCachedVersionedObject(this.parsedModuleCache, document, location.astRoot);
 		}
 
-		const location = amodroParse.findIdentifier(fileName,
-			cacheEntry && cacheEntry.astRoot || textContent, identifier);
-
-		if (!cacheEntry) {
-			cacheEntry = {
-				astRoot: location.astRoot,
-				version: document.version
-			};
-			this.parsedModuleCache.set(fileName, cacheEntry);
-		}
-
-		return location.length && amodroParse.convertRangeToPositions(textContent, location);
+		return range && amodroParse.convertRangeToPositions(textContent, range);
 	}
 
 	/**

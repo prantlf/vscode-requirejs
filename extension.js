@@ -60,6 +60,57 @@ function setCachedVersionedObject (cache, document, object) {
 	});
 }
 
+// Converts an esprima's range array [start,end] to a {start,end} objects
+// containing {line,character} objects.
+function convertRangeToPositions (fileContents, range) {
+	function getLineNumber (string, start, end) {
+		let count = 0;
+		let	i;
+
+		for (i = start; i < end; ++i) {
+			if (string.charAt(i) === '\n') {
+				++count;
+			}
+		}
+
+		return count;
+	}
+
+	function getCharacterNumber (string, start, end) {
+		let count = 0;
+		let	i;
+
+		for (i = end; --i >= start;) {
+			if (string.charAt(i) === '\n') {
+				break;
+			}
+			++count;
+		}
+
+		return count;
+	}
+
+	const start = range[0];
+	const end = range[1];
+	const startLine = getLineNumber(fileContents, 0, start);
+	const startCharacter = getCharacterNumber(fileContents, 0, start);
+	const linesInside = getLineNumber(fileContents, start, end);
+	const endLine = startLine + linesInside;
+	const endCharacter = linesInside ? getCharacterNumber(fileContents, start, end) : startCharacter + end - start;
+
+	return {
+		start: {
+			line: startLine,
+			character: startCharacter
+		},
+		end: {
+			line: endLine,
+			character: endCharacter
+		}
+	};
+}
+
+
 class ReferenceProvider {
 	constructor () {
 		this.moduleDependencyCache = new LRU(100);
@@ -119,7 +170,7 @@ class ReferenceProvider {
 			setCachedVersionedObject(this.parsedModuleCache, document, location.astRoot);
 		}
 
-		return range && amodroParse.convertRangeToPositions(textContent, range);
+		return range && convertRangeToPositions(textContent, range);
 	}
 
 	/**

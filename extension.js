@@ -36,7 +36,8 @@ function initializeRequireJs () {
 
 class ReferenceProvider {
 	constructor () {
-		this.dependencyCache = new LRU(100);
+		this.moduleDependencyCache = new LRU(100);
+		this.fileContentCache = new LRU(100);
 	}
 
 	/**
@@ -47,12 +48,12 @@ class ReferenceProvider {
 		 */
 	getModuleDependencies (document, textContent) {
 		const fileName = document.fileName;
-		let cacheEntry = this.dependencyCache.get(fileName);
+		let cacheEntry = this.moduleDependencyCache.get(fileName);
 		let dependencies;
 
 		if (cacheEntry) {
 			if (cacheEntry.version !== document.version) {
-				this.dependencyCache.del(fileName);
+				this.moduleDependencyCache.del(fileName);
 				cacheEntry = null;
 			}
 		}
@@ -61,7 +62,7 @@ class ReferenceProvider {
 				dependencies: amodroParse.findDependencies(fileName, textContent, {}),
 				version: document.version
 			};
-			this.dependencyCache.set(fileName, cacheEntry);
+			this.moduleDependencyCache.set(fileName, cacheEntry);
 		}
 		dependencies = cacheEntry.dependencies;
 
@@ -70,6 +71,38 @@ class ReferenceProvider {
 
 			return result;
 		}, {});
+	}
+
+	/**
+		 * Returns start/end with line/character location of the identifier occurrence range in the text content
+		 * @param {TextDocument} document Original document
+		 * @param {String} textContent String to process
+		 * @param {String} identifier Identifier to look for
+		 * @returns {Object} Contains start/end object with a pair of line/character objects
+		 */
+	findIdentifierLocation (document, textContent, identifier) {
+		const fileName = document.fileName;
+		let cacheEntry = this.fileContentCache.get(fileName);
+
+		if (cacheEntry) {
+			if (cacheEntry.version !== document.version) {
+				this.fileContentCache.del(fileName);
+				cacheEntry = null;
+			}
+		}
+
+		const result = amodroParse.findIdentifier(cacheEntry && cacheEntry.astRoot || textContent, identifier);
+		const location = result.location;
+
+		if (!cacheEntry) {
+			cacheEntry = {
+				astRoot: result.astRoot,
+				version: document.version
+			};
+			this.fileContentCache.set(fileName, cacheEntry);
+		}
+
+		return location && amodroParse.convertRangeToPositions(textContent, location);
 	}
 
 	/**
@@ -127,11 +160,9 @@ class ReferenceProvider {
 
 			if (!onlyNavigateToFile && searchFor) {
 				const fullText = doc.getText();
-				let foundAt = amodroParse.findIdentifier(fullText, searchFor);
+				const foundAt = this.findIdentifierLocation(doc, fullText, searchFor);
 
 				if (foundAt) {
-					foundAt = amodroParse.convertRangeToPositions(fullText, foundAt);
-
 					return new vscode.Location(newUri, new vscode.Range(
 						new vscode.Position(foundAt.start.line, foundAt.start.character),
 						new vscode.Position(foundAt.end.line, foundAt.end.character)

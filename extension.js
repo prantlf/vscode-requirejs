@@ -7,28 +7,6 @@ const amodroParse = require('./lib/parse');
 const LRU = require('lru-cache');
 
 /**
-	 * Remembers the start of a timed action.
-	 * @param {String} label Label for the action which duration will be measured
-	 * @returns {void} Nothing
-	 */
-function startTiming (label) {
-	if (vscode.workspace.getConfiguration('requireModuleSupport').get('enableTiming')) {
-		console.time('require-js: ' + label); // eslint-disable-line no-console
-	}
-}
-
-/**
-	 * Logs the time spend on the timed action.
-	 * @param {String} label Label for the action which duration was measured
-	 * @returns {void} Nothing
-	 */
-function endTiming (label) {
-	if (vscode.workspace.getConfiguration('requireModuleSupport').get('enableTiming')) {
-		console.timeEnd('require-js: ' + label); // eslint-disable-line no-console
-	}
-}
-
-/**
 	 * Initializes or re-initializes requirejs for the activated context.
 	 * @returns {void} Nothing
 	 */
@@ -197,6 +175,7 @@ function getIdentifiersToSearchFor (identifier) {
 		}
 	}
 
+	// Exported identifiers usually equal to formal parameters used for importing.
 	return {
 		imported: imported || selected,
 		selected: selected
@@ -218,12 +197,8 @@ class ReferenceProvider {
 		let astRoot = getCachedVersionedObject(this.parsedModuleCache, document);
 
 		if (!astRoot) {
-			const fileName = document.fileName;
-			const parseFileContentsLabel = 'Parsing file "' + fileName.substr(vscode.workspace.rootPath.length + 1) + '"'; // eslint-disable-line newline-after-var
-			startTiming(parseFileContentsLabel);
-			astRoot = amodroParse.parseFileContents(fileName, document.getText(), { loc: true });
+			astRoot = amodroParse.parseFileContents(document.fileName, document.getText(), { loc: true });
 			setCachedVersionedObject(this.parsedModuleCache, document, astRoot);
-			endTiming(parseFileContentsLabel);
 		}
 
 		return astRoot;
@@ -240,12 +215,8 @@ class ReferenceProvider {
 		let modules;
 
 		if (!dependencies) {
-			const fileName = document.fileName;
-			const findDependenciesLabel = 'Getting module dependencies of "' + fileName.substr(vscode.workspace.rootPath.length + 1) + '"'; // eslint-disable-line newline-after-var
-			startTiming(findDependenciesLabel);
-			dependencies = amodroParse.findDependenciesWithParams(fileName, astRoot);
+			dependencies = amodroParse.findDependenciesWithParams(document.fileName, astRoot);
 			setCachedVersionedObject(this.moduleDependencyCache, document, dependencies);
-			endTiming(findDependenciesLabel);
 		}
 		modules = dependencies.modules;
 
@@ -264,25 +235,16 @@ class ReferenceProvider {
 		 * @returns {Promise} Resolves with a file location
 		 */
 	searchModule (currentFilePath, modulePath, searchFor) {
-		const resolveModulePathLabel = 'Resolving path to "' + modulePath + '"'; // eslint-disable-line newline-after-var
-		startTiming(resolveModulePathLabel);
-		const newUri = vscode.Uri.file(resolveModulePath(modulePath, currentFilePath)); // eslint-disable-line newline-after-var
-		endTiming(resolveModulePathLabel);
-		const openTextDocumentLabel = 'Opening document "' + newUri.fsPath.substr(vscode.workspace.rootPath.length + 1) + '"'; // eslint-disable-line newline-after-var
-		startTiming(openTextDocumentLabel);
+		const newUri = vscode.Uri.file(resolveModulePath(modulePath, currentFilePath));
 		const newDocument = vscode.workspace.openTextDocument(newUri);
 
 		return newDocument.then(document => {
-			endTiming(openTextDocumentLabel);
 			const onlyNavigateToFile = vscode.workspace.getConfiguration('requireModuleSupport').get('onlyNavigateToFile');
 
 			// Some modules are source for RequireJS plugins and need not be written in JavaScript.
 			if (!onlyNavigateToFile && searchFor && document.languageId === 'javascript') {
 				const astRoot = this.getParsedModule(document);
-				const findIdentifierLabel = 'Looking for identifier "' + searchFor + '"'; // eslint-disable-line newline-after-var
-				startTiming(findIdentifierLabel);
-				const location = amodroParse.findIdentifier(document.fileName, astRoot, searchFor); // eslint-disable-line newline-after-var
-				endTiming(findIdentifierLabel);
+				const location = amodroParse.findIdentifier(document.fileName, astRoot, searchFor);
 				const range = location.loc;
 
 				if (range) {
@@ -303,14 +265,8 @@ class ReferenceProvider {
 		const range = document.getWordRangeAtPosition(position);
 
 		if (range) {
-			const textAtCaret = document.getText(range);
-			const provideDefinitionLabel = 'Providing definition for word "' + textAtCaret + '"'; // eslint-disable-line newline-after-var
-			startTiming(provideDefinitionLabel);
 			const astRoot = this.getParsedModule(document);
-			const findIdentifierLabel = 'Looking for identifier "' + textAtCaret + '"'; // eslint-disable-line newline-after-var
-			startTiming(findIdentifierLabel);
-			const identifier = findIdentifierWinthinRange(astRoot, range); // eslint-disable-line newline-after-var
-			endTiming(findIdentifierLabel);
+			const identifier = findIdentifierWinthinRange(astRoot, range);
 
 			if (identifier) {
 				const moduleDependencies = this.getModuleDependencies(document, astRoot);
@@ -318,12 +274,9 @@ class ReferenceProvider {
 				let modulePath = moduleDependencies[searchFor.imported];
 
 				if (modulePath) {
-					const promise = this.searchModule(currentFilePath, modulePath, searchFor.selected); // eslint-disable-line newline-after-var
-					endTiming(provideDefinitionLabel);
-					return promise; // eslint-disable-line newline-before-return
+					return this.searchModule(currentFilePath, modulePath, searchFor.selected);
 				}
 			}
-			endTiming(provideDefinitionLabel);
 		}
 
 		return Promise.resolve(undefined);
@@ -333,10 +286,7 @@ class ReferenceProvider {
 Object.assign(exports, {
 	ReferenceProvider,
 	activate (context) {
-		const initializeRequireJsLabel = 'Initializing RequireJS configuration'; // eslint-disable-line newline-after-var
-		startTiming(initializeRequireJsLabel);
 		initializeRequireJs();
-		endTiming(initializeRequireJsLabel);
 		context.subscriptions.push(
 			vscode.languages.registerDefinitionProvider(
 				'javascript',

@@ -364,14 +364,15 @@ class ReferenceProvider {
 
 		if (!dependencies) {
 			dependencies = amodroParse.findDependencies(document.fileName, astRoot);
+			dependencies = dependencies.params.reduce(function (result, param, index) {
+				result[param] = dependencies[index];
+
+				return result;
+			}, {});
 			setCachedVersionedObject(this.moduleDependencyCache, document, dependencies);
 		}
 
-		return dependencies.params.reduce(function (result, param, index) {
-			result[param] = dependencies[index];
-
-			return result;
-		}, {});
+		return dependencies;
 	}
 
 	/**

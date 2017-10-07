@@ -156,28 +156,141 @@ function findIdentifierWinthinRange (astRoot, range) {
 }
 
 /**
-	 * Returns identifiers for the "Go to Definition lookup. The "imported" one used
-	 * as formal parameter for the dependent module's export and the "selected" one,
-	 * which is either the same one, or is child property, which eas selected.
-	 * @param {Object} identifier AST nodes for the selected identifier
+	 * Returns map of local variables and their initializing ones from expressions,
+	 * which just assign one identifier to another, or assign a variable a value
+	 * by a "new" expression.
+	 * @param {Object} astRoot Parsed document
+	 * @param {Object} stopNode Node, which the declarations have to preceede
 	 * @returns {Object} Contains currentNode and parentNode objects
 	 */
-function getIdentifiersToSearchFor (identifier) {
-	const parentNode = identifier.parentNode;
-	const selected = identifier.currentNode.name;
-	let imported;
+function getVariableAssignments (astRoot, stopNode) {
+	const assignments = {};
 
-	if (parentNode) {
-		// Support selecting "member" within a "object.member" expression.
-		if (parentNode && parentNode.type === 'MemberExpression' && parentNode.computed === false
-			&& parentNode.property && parentNode.property.name === selected && parentNode.object) {
-			imported = parentNode.object.name;
+	function handleAssignment (leftNodeName, rightNode) {
+		if (rightNode) {
+			if (rightNode.type === 'Identifier') {
+				// Suport assignment "... = imported;"
+				assignments[leftNodeName] = rightNode.name;
+			} else if (rightNode.type === 'NewExpression') {
+				// Suport assignment "... = new Imported;"
+				let callee = rightNode.callee;
+
+				if (callee && callee.type === 'Identifier') {
+					assignments[leftNodeName] = callee.name;
+				}
+			}
 		}
 	}
 
+	amodroParse.traverse(astRoot, function (node) {
+		if (node === stopNode) {
+			return false;
+		}
+
+		if (node) {
+			if (node.type === 'VariableDeclarator') {
+				// Suport declaration "var local = imported;"
+				if (node.id && node.id.type === 'Identifier' && node.init) {
+					handleAssignment(node.id.name, node.init);
+				}
+			} else if (node.type === 'AssignmentExpression') {
+				// Suport assignment "local = imported;"
+				if (node.left && node.left.type === 'Identifier' && node.right) {
+					handleAssignment(node.left.name, node.right);
+				}
+			}
+		}
+
+		return true;
+	});
+
+	return assignments;
+}
+
+/**
+	 * Returns identifiers for the "Go to Definition lookup. The "imported" one used
+	 * as formal parameter for the dependent module's export and the "selected" one,
+	 * which is either the same one, or is child property, which eas selected.
+	 * @param {Object} astRoot Parsed document
+	 * @param {Object} identifier AST nodes for the selected identifier
+	 * @param {Object} moduleDependencies Map of formal parameter name to RequireJS module name
+	 * @returns {Object} Contains currentNode and parentNode objects
+	 */
+function findOriginatingModuleDependency (astRoot, identifier, moduleDependencies) { // eslint-disable-line complexity
+	const parentNode = identifier.parentNode;
+	const currentNode = identifier.currentNode;
+	let selected = currentNode.name;
+	let imported, isMember;
+
+	if (parentNode) {
+		let property = parentNode.property;
+		let object = parentNode.object;
+
+		// Support selecting "member" within a "object.member" expression, otherwise
+		// just take the selected identifer as the symbol to look for.
+		if (parentNode.type === 'MemberExpression' && parentNode.computed === false
+			&& property && property.name === selected && object) {
+			if (object.type === 'Identifier') {
+				imported = parentNode.object.name;
+				isMember = true;
+			} else {
+				let callee = object.callee;
+				let parameters = object.arguments;
+
+				// Support selecting "member" within a "require('module').member" expression.
+				if (object.type === 'CallExpression' && callee.type === 'Identifier'
+					&& (callee.name === 'require' || callee.name === 'requirejs')
+					&& parameters && parameters.length === 1) {
+					let firstParameter = parameters[0];
+
+					if (firstParameter && firstParameter.type === 'Literal') { // eslint-disable-line max-depth
+						return {
+							modulePath: firstParameter.value,
+							selected: selected
+						};
+					}
+				}
+			}
+		}
+	}
+	if (!imported) {
+		imported = selected;
+	}
+
 	// Exported identifiers usually equal to formal parameters used for importing.
+	let modulePath = moduleDependencies[imported];
+
+	// If the identifier is missing among the formal parameters, it may be declared
+	// locally and assigned the imported dependency.
+	if (!modulePath) {
+		const assignments = getVariableAssignments(astRoot, currentNode);
+
+		for (;;) {
+			let declared = assignments[imported];
+
+			if (!declared) {
+				break;
+			}
+			// Prevent endless loop, if the code is invalid and contains a declaration
+			// with the variable and the expression the other way round.
+			delete assignments[imported];
+			imported = declared;
+
+			modulePath = moduleDependencies[imported];
+			if (modulePath) {
+				// If the real import was just renamed by a declaration, look for
+				// the real name in the originating module.
+				if (!isMember) {
+					selected = imported;
+				}
+				break;
+			}
+		}
+	}
+
 	return {
-		imported: imported || selected,
+		modulePath: modulePath,
+		imported: imported,
 		selected: selected
 	};
 }
@@ -270,11 +383,11 @@ class ReferenceProvider {
 
 			if (identifier) {
 				const moduleDependencies = this.getModuleDependencies(document, astRoot);
-				const searchFor = getIdentifiersToSearchFor(identifier);
-				let modulePath = moduleDependencies[searchFor.imported];
+				const moduleDependency = findOriginatingModuleDependency(astRoot, identifier, moduleDependencies);
+				const modulePath = moduleDependency.modulePath;
 
 				if (modulePath) {
-					return this.searchModule(currentFilePath, modulePath, searchFor.selected);
+					return this.searchModule(currentFilePath, modulePath, moduleDependency.selected);
 				}
 			}
 		}

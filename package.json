@@ -25,6 +25,11 @@
 					"default": "",
 					"description": "Path of the RequireJS configuration file relative to workspace root"
 				},
+				"requireModuleSupport.moduleCacheSize": {
+					"type": "integer",
+					"default": 100,
+					"description": "Maximum count of parsed modules and their dependencies kept in memory as cache to improve performance"
+				},
 				"requireModuleSupport.modulePath": {
 					"type": "string",
 					"default": "",

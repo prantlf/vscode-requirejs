@@ -324,8 +324,10 @@ class ReferenceProvider {
 		 * Initializes a new instance.
 		 */
 	constructor () {
-		this.moduleDependencyCache = new LRU(100);
-		this.parsedModuleCache = new LRU(100);
+		const moduleCacheSize = vscode.workspace.getConfiguration('requireModuleSupport').get('moduleCacheSize') || 100;
+
+		this.moduleDependencyCache = new LRU(moduleCacheSize);
+		this.parsedModuleCache = new LRU(moduleCacheSize);
 	}
 
 	/**

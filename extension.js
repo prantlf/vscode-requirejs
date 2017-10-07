@@ -113,6 +113,30 @@ function setCachedVersionedObject (cache, document, object) {
 }
 
 /**
+	 * Finds the first occurrence of the specified identifier.
+	 * @param {Object} astRoot Parsed document
+	 * @param {String} identifier Identifier to look for
+	 *
+	 * @returns {Object} Range, where the identifer was found as
+	 * {start,end} object with {line,column} sub-objects.
+	 */
+function findIdentifier (astRoot, identifier) {
+	let loc;
+
+	amodroParse.traverse(astRoot, node => {
+		if (node && node.type === 'Identifier' && node.name === identifier) {
+			loc = node.loc;
+
+			return false;
+		}
+
+		return true;
+	});
+
+	return loc;
+}
+
+/**
 	 * Returns AST nodes for the identifier the expression around it, or nothing,
 	 * if there is no identifier within the specified range.
 	 * @param {Object} astRoot Parsed document
@@ -337,16 +361,14 @@ class ReferenceProvider {
 		 */
 	getModuleDependencies (document, astRoot) {
 		let dependencies = getCachedVersionedObject(this.moduleDependencyCache, document);
-		let modules;
 
 		if (!dependencies) {
-			dependencies = amodroParse.findDependenciesWithParams(document.fileName, astRoot);
+			dependencies = amodroParse.findDependencies(document.fileName, astRoot);
 			setCachedVersionedObject(this.moduleDependencyCache, document, dependencies);
 		}
-		modules = dependencies.modules;
 
 		return dependencies.params.reduce(function (result, param, index) {
-			result[param] = modules[index];
+			result[param] = dependencies[index];
 
 			return result;
 		}, {});
@@ -369,8 +391,7 @@ class ReferenceProvider {
 			// Some modules are source for RequireJS plugins and need not be written in JavaScript.
 			if (!onlyNavigateToFile && searchFor && document.languageId === 'javascript') {
 				const astRoot = this.getParsedModule(document);
-				const location = amodroParse.findIdentifier(document.fileName, astRoot, searchFor);
-				const range = location.loc;
+				const range = findIdentifier(astRoot, searchFor);
 
 				if (range) {
 					return new vscode.Location(newUri, new vscode.Range(

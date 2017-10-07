@@ -216,7 +216,7 @@ function getVariableAssignments (astRoot, stopNode) {
 	 * @param {Object} moduleDependencies Map of formal parameter name to RequireJS module name
 	 * @returns {Object} Contains currentNode and parentNode objects
 	 */
-function findOriginatingModuleDependency (astRoot, identifier, moduleDependencies) { // eslint-disable-line complexity
+function findOriginatingModuleDependency (astRoot, identifier, moduleDependencies) {
 	const parentNode = identifier.parentNode;
 	const currentNode = identifier.currentNode;
 	let selected = currentNode.name;
@@ -243,7 +243,7 @@ function findOriginatingModuleDependency (astRoot, identifier, moduleDependencie
 					&& parameters && parameters.length === 1) {
 					let firstParameter = parameters[0];
 
-					if (firstParameter && firstParameter.type === 'Literal') { // eslint-disable-line max-depth
+					if (firstParameter && firstParameter.type === 'Literal') {
 						return {
 							modulePath: firstParameter.value,
 							selected: selected
@@ -296,9 +296,21 @@ function findOriginatingModuleDependency (astRoot, identifier, moduleDependencie
 }
 
 class ReferenceProvider {
+	/**
+		 * Initializes a new instance.
+		 */
 	constructor () {
 		this.moduleDependencyCache = new LRU(100);
 		this.parsedModuleCache = new LRU(100);
+	}
+
+	/**
+		 * Clears internal caches to get to the state of the new inbstance.
+		 * @returns {Void} Nothing
+		 */
+	clearVersionObjectCaches () {
+		this.moduleDependencyCache.reset();
+		this.parsedModuleCache.reset();
 	}
 
 	/**
@@ -399,11 +411,17 @@ class ReferenceProvider {
 Object.assign(exports, {
 	ReferenceProvider,
 	activate (context) {
+		const referenceProvider = new ReferenceProvider();
+
 		initializeRequireJs();
 		context.subscriptions.push(
+			vscode.workspace.onDidChangeConfiguration(() => {
+				initializeRequireJs();
+				referenceProvider.clearVersionObjectCaches();
+			}));
+		context.subscriptions.push(
 			vscode.languages.registerDefinitionProvider(
-				'javascript',
-				new ReferenceProvider()
+				'javascript', referenceProvider
 			)
 		);
 	}

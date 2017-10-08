@@ -76,43 +76,6 @@ function resolveModulePath (modulePath, currentFilePath) {
 }
 
 /**
-	 * Gets a cached object for the specified document version. If the cache was populated
-	 * for other document version, it removes the object from the cache and returns nothing.
-	 * @param {Object} cache LRU cache to use
-	 * @param {TextDocument} document Original document
-	 * @returns {Object} The cached objecty or null
-	 */
-function getCachedVersionedObject (cache, document) {
-	const fileName = document.fileName;
-	let cacheEntry = cache.get(fileName);
-
-	if (cacheEntry) {
-		// The version property changes with every document modification.
-		if (cacheEntry.version !== document.version) {
-			cache.del(fileName);
-		} else {
-			return cacheEntry.object;
-		}
-	}
-
-	return null;
-}
-
-/**
-	 * Sets a object to cache for the specified document version.
-	 * @param {Object} cache LRU cache to use
-	 * @param {TextDocument} document Original document
-	 * @param {Object} object Object to store to the cache
-	 * @returns {void} Nothing
-	 */
-function setCachedVersionedObject (cache, document, object) {
-	cache.set(document.fileName, {
-		object: object,
-		version: document.version
-	});
-}
-
-/**
 	 * Finds the first occurrence of the specified identifier.
 	 * @param {Object} astRoot Parsed document
 	 * @param {String} identifier Identifier to look for
@@ -340,16 +303,29 @@ class ReferenceProvider {
 	}
 
 	/**
+		 * Clears internal caches for the specified document.
+		 * @param {TextDocument} document Original document
+		 * @returns {Void} Nothing
+		 */
+	clearVersionObjectCache (document) {
+		const fileName = document.fileName;
+
+		this.moduleDependencyCache.del(fileName);
+		this.parsedModuleCache.del(fileName);
+	}
+
+	/**
 		 * Returns AST of the specified document to beused in other functions
 		 * @param {TextDocument} document Original document
 		 * @returns {Object} JavaScript AST
 		 */
 	getParsedModule (document) {
-		let astRoot = getCachedVersionedObject(this.parsedModuleCache, document);
+		const fileName = document.fileName;
+		let astRoot = this.parsedModuleCache.get(fileName);
 
 		if (!astRoot) {
-			astRoot = amodroParse.parseFileContents(document.fileName, document.getText(), { loc: true });
-			setCachedVersionedObject(this.parsedModuleCache, document, astRoot);
+			astRoot = amodroParse.parseFileContents(fileName, document.getText(), { loc: true });
+			this.parsedModuleCache.set(fileName, astRoot);
 		}
 
 		return astRoot;
@@ -362,16 +338,17 @@ class ReferenceProvider {
 		 * @returns {Object} Contains name/path pairs
 		 */
 	getModuleDependencies (document, astRoot) {
-		let dependencies = getCachedVersionedObject(this.moduleDependencyCache, document);
+		const fileName = document.fileName;
+		let dependencies = this.moduleDependencyCache.get(fileName);
 
 		if (!dependencies) {
-			dependencies = amodroParse.findDependencies(document.fileName, astRoot);
+			dependencies = amodroParse.findDependencies(fileName, astRoot);
 			dependencies = dependencies.params.reduce(function (result, param, index) {
 				result[param] = dependencies[index];
 
 				return result;
 			}, {});
-			setCachedVersionedObject(this.moduleDependencyCache, document, dependencies);
+			this.moduleDependencyCache.set(fileName, dependencies);
 		}
 
 		return dependencies;
@@ -442,6 +419,14 @@ Object.assign(exports, {
 			vscode.workspace.onDidChangeConfiguration(() => {
 				initializeRequireJs();
 				referenceProvider.clearVersionObjectCaches();
+			}));
+		context.subscriptions.push(
+			vscode.workspace.onDidChangeTextDocument(event => {
+				const change = event.contentChanges[event.contentChanges.length - 1];
+
+				if (change) {
+					referenceProvider.clearVersionObjectCache(event.document);
+				}
 			}));
 		context.subscriptions.push(
 			vscode.languages.registerDefinitionProvider(

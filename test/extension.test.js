@@ -17,8 +17,9 @@ suite('extension', () => {
 
 		// Registering the RequireJS definition provider,
 		// reinitializing RequireJS on configuration change,
-		// and clearing caches on on document change.
-		assert.equal(context.subscriptions.length, 3);
+		// clearing caches on on document change
+		// and clearing caches on on document close.
+		assert.equal(context.subscriptions.length, 4);
 		assert.deepEqual(
 			registerDefinitionProviderStub.getCall(0).args,
 			[

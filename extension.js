@@ -428,6 +428,12 @@ Object.assign(exports, {
 					referenceProvider.clearVersionObjectCache(event.document);
 				}
 			}));
+		// This effectively destroys efficient caching. Switching between editor
+		// windows (tabs) triggers close/open events on the respective documents.
+		context.subscriptions.push(
+			vscode.workspace.onDidCloseTextDocument(document => {
+				referenceProvider.clearVersionObjectCache(document);
+			}));
 		context.subscriptions.push(
 			vscode.languages.registerDefinitionProvider(
 				'javascript', referenceProvider

@@ -15,9 +15,10 @@ suite('extension', () => {
 
 		extension.activate(context);
 
-		// Reinitializing RequireJS on configuration change
-		// and registering the RequireJS definition provider.
-		assert.equal(context.subscriptions.length, 2);
+		// Registering the RequireJS definition provider,
+		// adding the "Go To Definition Module" command and
+		// reinitializing RequireJS on configuration change.
+		assert.equal(context.subscriptions.length, 3);
 		assert.deepEqual(
 			registerDefinitionProviderStub.getCall(0).args,
 			[

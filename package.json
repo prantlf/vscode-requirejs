@@ -12,7 +12,8 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onLanguage:javascript"
+		"onLanguage:javascript",
+		"onCommand:requireModuleSupport.goToDefinitionModule"
 	],
 	"main": "./extension",
 	"contributes": {
@@ -46,7 +47,20 @@
 					"description": "Assigns default file extensions to target module paths used with RequireJS plugins"
 				}
 			}
-		}
+		},
+        "commands": [
+            {
+                "command": "requireModuleSupport.goToDefinitionModule",
+                "title": "Go to Definition Module"
+            }
+		],
+		"keybindings": [
+			{
+				"command": "requireModuleSupport.goToDefinitionModule",
+				"key": "f12",
+				"when": "editorTextFocus"
+			}
+		]
 	},
 	"repository": {
 		"type": "git",

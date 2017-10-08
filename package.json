@@ -43,9 +43,19 @@
 			{
 				"command": "requireModuleSupport.goToDefinitionModule",
 				"key": "f12",
-				"when": "editorTextFocus"
+				"when": "editorLangId == javascript"
 			}
-		]
+		],
+		"menus": {
+			"editor/context": [
+				{
+					"command": "requireModuleSupport.goToDefinitionModule",
+					"alt": "editor.action.goToDeclaration",
+					"when": "editorLangId == javascript",
+					"group": "navigation"
+				}
+			]
+		}
 	},
 	"repository": {
 		"type": "git",

@@ -12,7 +12,8 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onLanguage:javascript"
+		"onLanguage:javascript",
+		"onCommand:requireModuleSupport.goToDefinitionModule"
 	],
 	"main": "./extension",
 	"contributes": {
@@ -31,7 +32,20 @@
 					"description": "Should we search inside the landing file?"
 				}
 			}
-		}
+		},
+        "commands": [
+            {
+                "command": "requireModuleSupport.goToDefinitionModule",
+                "title": "Go to Definition Module"
+            }
+		],
+		"keybindings": [
+			{
+				"command": "requireModuleSupport.goToDefinitionModule",
+				"key": "f12",
+				"when": "editorTextFocus"
+			}
+		]
 	},
 	"repository": {
 		"type": "git",
